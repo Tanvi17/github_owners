@@ -2,3 +2,5 @@
 git_token
 /src/.env
 /data/data.csv
+commands.txt
+app.log
