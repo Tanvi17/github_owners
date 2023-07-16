@@ -1,10 +1,12 @@
 from dataclasses import dataclass
-from typing import Dict
+
 import pandas as pd
+from sklearn.preprocessing import MinMaxScaler
 
 
 @dataclass
 class UserInfo:
+    email: str
     authored_commits_count: int = 0
     commited_commits_count: int = 0
     author_is_committer_count: int = 0
@@ -15,27 +17,16 @@ class UserInfo:
     issue_assigned_count: int = 0
     todo_author_count: int = 0
 
-@dataclass
-class UserEmailData:
-    user_email_data: Dict[str, UserInfo]
 
-class CreateDataFrame():
-    def __init__(self, class_object: UserEmailData):
-        self.user_data = class_object.user_email_data
+def create_df(user_data) -> pd.DataFrame:
+    return pd.DataFrame([r.__dict__ for r in user_data.values()])
 
-    def create_df(self) -> pd.DataFrame:
-        df = pd.DataFrame({
-            'email': [x for x in self.user_data.keys()],
-            'authored_commits_count': [x.authored_commits_count for x in self.user_data.values()],
-            'commited_commits_count': [x.commited_commits_count for x in self.user_data.values()],
-            'author_is_committer_count': [x.author_is_committer_count for x in self.user_data.values()],
-            'first_commit': [x.first_commit for x in self.user_data.values()],
-            'oldest_commit_count': [x.oldest_commit_count for x in self.user_data.values()],
-            'newest_commit_count': [x.newest_commit_count for x in self.user_data.values()],
-            'pr_files_touched_count': [x.pr_files_touched_count for x in self.user_data.values()],
-            'issue_assigned_count': [x.issue_assigned_count for x in self.user_data.values()],
-            'todo_author_count': [x.todo_author_count for x in self.user_data.values()]
-            })
+def normalize_df(df: pd.DataFrame) -> pd.DataFrame:
+    # normalizing or standardizing the data
+    scaling_data = df.drop(['email'], axis=1)
+    scaler = MinMaxScaler().fit(scaling_data)
+    scaled_data = scaler.transform(scaling_data)
 
-        print(df.head())
-        return df
+    df_shaped = df.copy()
+    df_shaped[df_shaped.columns[1:]] = scaled_data
+    return df_shaped
