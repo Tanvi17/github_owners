@@ -1,10 +1,11 @@
+import logging
 import re
 import time
 from os import PathLike, path
 from typing import Any, Union
 
 import git
-from data_extraction.helper import UserEmailData, UserInfo
+from data_extraction.helper import UserInfo
 from github import Github
 
 from . import github_auth as AUTH
@@ -25,7 +26,7 @@ class GithubData:
         self.repo = git.Repo(self.local_repo)
         self.commits = self.repo.iter_commits(paths=self.dir_path)
         
-        self.u_data = UserEmailData({})
+        self.u_data = {}
 
 
     def find_files(self, subdir):
@@ -52,43 +53,40 @@ class GithubData:
         Extracts author of the TODO comments in a file 
         """
         blame = self.repo.blame('HEAD', file=file_path)
-        TODO_REGEX = r'// TODO[^\n]*'
+        TODO_REGEX = r' TODO[^\n]*'
         for commit, lines in blame:
             for line in lines:
-                comments = re.findall(TODO_REGEX, line, re.MULTILINE)
+                try:
+                    comments = re.findall(TODO_REGEX, line)
+                except:
+                    comments = None
                 if comments and commit.author.email:
-                    if commit.author.email not in self.u_data.user_email_data:
-                        self.u_data.user_email_data[commit.author.email] = UserInfo()
-                    self.u_data.user_email_data[commit.author.email].todo_author_count += len(comments)
+                    if commit.author.email not in self.u_data:
+                        self.u_data[commit.author.email] = UserInfo(email=commit.author.email)
+                    self.u_data[commit.author.email].todo_author_count += len(comments)
 
     def get_pr_data(self) -> None:
         """
         Gets the author from all the resolved PRs relevant to the directory
         """
         pulls = self.remote_repo.get_pulls(state='closed')
-        c=0
-        for pr in pulls:
-            if c%100 == 0:
-                print(c)
-            c += 1
-            for commit in pr.get_commits():
-                for file_ in commit.files:
-                    if file_.filename.startswith(self.dir_path) and commit.author:
-                        if commit.author.email not in self.u_data.user_email_data:
-                            self.u_data.user_email_data[commit.author.email] = UserInfo()
-                        self.u_data.user_email_data[commit.author.email].pr_files_touched_count += 1
+
+        # putting limit of 300 PRs to avoid rate limit
+        for pr in pulls[:300]:
+            for commit, file_ in zip(pr.get_commits(), pr.get_files()):
+                if commit.author and commit.author.email and file_.filename.startswith(self.dir_path):
+                    if commit.author.email not in self.u_data:
+                        self.u_data[commit.author.email] = UserInfo(email=commit.author.email)
+                    self.u_data[commit.author.email].pr_files_touched_count += 1
 
     def get_issue_data(self) -> None:
         """
         Finds the assignee of all the issues relevant to the directory
         """
         issues = self.remote_repo.get_issues(state='closed', assignee='*')
-        c = 0
-        for issue in issues: 
-            if c%100 == 0:
-                print(c)
-            c += 1
 
+        # putting limit of 500 issues to avoid rate limit
+        for issue in issues[:500]: 
             if issue.body:
                 # get dump of files in issue
                 mentioned_files = re.findall(r'[\w./-]+\.[\w]+', issue.body) 
@@ -97,9 +95,9 @@ class GithubData:
                     # get the email of the user assigned to the issue
                     assigned_user_email = self.g.get_user(issue.assignee.login).email
 
-                    if assigned_user_email not in self.u_data.user_email_data:
-                        self.u_data.user_email_data[assigned_user_email] = UserInfo()
-                    self.u_data.user_email_data[assigned_user_email].issue_assigned_count += 1
+                    if assigned_user_email not in self.u_data:
+                        self.u_data[assigned_user_email] = UserInfo(email=assigned_user_email)
+                    self.u_data[assigned_user_email].issue_assigned_count += 1
 
     def get_fresh_and_old_commit(self) -> Union[int, int, Any]:
         """
@@ -127,52 +125,49 @@ class GithubData:
             committer_email = commit.committer.email
 
             # add author email to dict and increment authored commits count
-            if author_email not in self.u_data.user_email_data:
-                self.u_data.user_email_data[author_email] = UserInfo()
-            self.u_data.user_email_data[author_email].authored_commits_count += 1
+            if author_email not in self.u_data:
+                self.u_data[author_email] = UserInfo(email=author_email)
+            self.u_data[author_email].authored_commits_count += 1
 
             # add commiter email to dict and increment commiter commits count
-            if committer_email not in self.u_data.user_email_data:
-                self.u_data.user_email_data[committer_email] = UserInfo()
-            self.u_data.user_email_data[committer_email].commited_commits_count += 1
+            if committer_email not in self.u_data:
+                self.u_data[committer_email] = UserInfo(email=committer_email)
+            self.u_data[committer_email].commited_commits_count += 1
 
             # increment authored and commited commits count
             if author_email == committer_email:
-                self.u_data.user_email_data[author_email].author_is_committer_count += 1
+                self.u_data[author_email].author_is_committer_count += 1
 
             # fresh or old commit contributor
             if commit.authored_datetime.year >= fresh_commit_threshold_year:
-                self.u_data.user_email_data[author_email].newest_commit_count += 1
+                self.u_data[author_email].newest_commit_count += 1
             if commit.authored_datetime.year <= old_commit_threshold_year:
-                self.u_data.user_email_data[author_email].oldest_commit_count += 1
+                self.u_data[author_email].oldest_commit_count += 1
             
             # first year and month commit contributor
             if commit.authored_datetime.year == first_commit_datetime.year and commit.authored_datetime.month == first_commit_datetime.month:
-                self.u_data.user_email_data[author_email].first_commit += 1
+                self.u_data[author_email].first_commit += 1
 
     def gather_github_data(self):
         total_time_start = time.time()
+
         # author and committer data
+        logging.info('Adding commit author and committer data..')
         self.get_authors_and_committers_data()
-        print('Done adding commit author and committer data..')
 
         # data from Github issues
-        start = time.time()
+        logging.info('Adding data from raised issues..')
         self.get_issue_data()
-        print('Time taken for issues: ', time.time() - start)
-        print('Done adding data from raised issues..')
 
         # data from Github pull requests
-        start = time.time()
+        logging.info('Adding data from pull requests..')
         self.get_pr_data()
-        print('Time taken for pull requests: ', time.time() - start)
-        print('Done adding data from pull requests..')
 
         # data from todo comments
+        logging.info('Adding todo contributors...')
         _, _ = self.find_files(self.dir_path)
-        print('Done adding todo contributors..')
 
-        print('Total time taken: ', time.time() - total_time_start)
+        logging.info('Total time taken to collect github data: ', time.time() - total_time_start)
 
         return self.u_data
 
