@@ -7,10 +7,10 @@ from scoring_feature.score import WeightedAverage
 from utils import CSV_PATH
 
 parser = argparse.ArgumentParser(description='Suggest owners for the given repo directory')
-parser.add_argument('--cloned_repo_local_path', type=str, help='path to the cloned repo')
-parser.add_argument('--remote_repo_path', type=str, help='path to the remote repo')
+parser.add_argument('--cloned_repo_path', type=str, help='path to the cloned repo')
+parser.add_argument('--remote_repo_link', type=str, help='path to the remote repo')
 parser.add_argument('--dir', type=str, help='directory path')
-parser.add_argument('--number_of_owners', type=int, help='number of top owners to suggest')
+parser.add_argument('--number', type=int, default=3, help='number of top owners to suggest')
 
 def main():
     args = parser.parse_args()
