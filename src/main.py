@@ -30,7 +30,7 @@ def main():
 
     # scoring system
     top_contributors = WeightedAverage(normalized_github_data_df, args.number_of_owners).suggest_top_contributors()
-    print(f"The top {args.number_of_owners} contributors of directory {args.dir} are: \n {top_contributors}")
+    print(f"The top {args.number_of_owners} contributors of directory {args.dir} are (with contri %) : \n {top_contributors}")
 
     
 
