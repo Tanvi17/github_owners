@@ -2,7 +2,7 @@ import heapq
 from dataclasses import dataclass, fields
 
 import pandas as pd
-
+from scipy.special import softmax
 
 @dataclass
 class Weights: 
@@ -16,7 +16,7 @@ class Weights:
     oldest_commit_count: int = 4
     newest_commit_count: int = 3
     pr_files_touched_count: int = 2
-    issue_assigned_count: int = 3
+    issue_assigned_count: int = 2
     todo_author_count: int = 4
 
 
@@ -24,20 +24,26 @@ class WeightedAverage:
     def __init__(self, df: pd.DataFrame, number_of_contributors: int):
         self.df = df
         self.number_of_contributors = number_of_contributors
-        self.top_contributors = [] 
+        self.contributor_score_dict = {}
+
+    def apply_soft_max(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Apply softmax and return top n contributors
+        """
+        softmax_scores = softmax(df['score'])
+        df['probs'] = softmax_scores
+        df = df.sort_values(by='probs', ascending=False)
+
+        return [(df.index[i], round((df['probs'][i])*100, 2)) for i in range(self.number_of_contributors)]
 
     def suggest_top_contributors(self):
         for _, row in self.df.iterrows():
-            contributor_score = 0
+            score = 0
             for field in fields(Weights):
-                contributor_score += getattr(Weights, field.name) * row[field.name]
+                score += getattr(Weights, field.name) * row[field.name]
 
-            # Add the github user score to the heap
-            if len(self.top_contributors) < self.number_of_contributors:
-                heapq.heappush(self.top_contributors, (contributor_score, row['email']))
-            else:
-                heapq.heappushpop(self.top_contributors, (contributor_score, row['email']))
+            self.contributor_score_dict[row['email']] = score
 
-            top_n_contributors = heapq.nlargest(self.number_of_contributors, self.top_contributors)
+        suggested_owners_df = pd.DataFrame.from_dict(self.contributor_score_dict, orient='index', columns=['score'])
 
-        return [user_email for _, user_email in top_n_contributors]
+        return self.apply_soft_max(suggested_owners_df)
